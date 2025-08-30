@@ -1,2 +1,2 @@
 export * from "./exports";
-export * as r from "./exports";
+export * as k from "./exports";

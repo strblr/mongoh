@@ -5,56 +5,57 @@ import {
   MongoClient,
   MongoClientOptions
 } from "mongodb";
-import type { SchemaLike, ValidateSchema } from "./utils";
+import { RonkCollection } from "./collection";
+import type { SchemaLike, ValidateSchema } from "./types";
 
 export interface RonkOptions extends MongoClientOptions {
   uri?: string;
-  dbOptions?: DbOptions;
+  dbOptions?: DbOptions & { dbName?: string };
 }
 
-export type RonkDb<S extends SchemaLike> = {
+export type RonkCollections<S extends SchemaLike> = {
   [K in keyof S]: RonkCollection<S, K>;
 } & {
-  $schema: S;
-  $client: MongoClient;
-  $db: Db;
   (collection: string): Collection;
 };
 
-export function db<const S extends SchemaLike>(
-  schema: ValidateSchema<S> & S,
-  { uri = "mongodb://localhost:27017", dbOptions, ...options }: RonkOptions = {}
-) {
-  const client = new MongoClient(uri, options);
-  const db = client.db(undefined, dbOptions);
+export class Ronk<S extends SchemaLike> {
+  readonly client: MongoClient;
+  readonly db: Db;
+  readonly collections: RonkCollections<S>;
 
-  return new Proxy((() => {}) as any as RonkDb<S>, {
-    get(_, prop) {
-      console.log("IN GET", prop);
-      if (prop === "$schema") {
-        return schema;
+  constructor(
+    public readonly schema: S,
+    {
+      uri = "mongodb://localhost:27017",
+      dbOptions: { dbName, ...dbOptions } = {},
+      ...options
+    }: RonkOptions = {}
+  ) {
+    this.client = new MongoClient(uri, options);
+    this.db = this.client.db(dbName, dbOptions);
+
+    const collections = Object.fromEntries(
+      Object.keys(schema).map(name => [name, new RonkCollection(this, name)])
+    );
+
+    this.collections = new Proxy((() => {}) as any, {
+      get: (_, prop) => {
+        if (Object.hasOwn(collections, prop)) {
+          return collections[prop as string];
+        }
+        throw new Error(`Unknown collection: ${String(prop)}`);
+      },
+      apply: (_, __, [collection]) => {
+        return this.db.collection(collection);
       }
-      if (prop === "$client") {
-        return client;
-      }
-      if (prop === "$db") {
-        return db;
-      }
-      if (Object.hasOwn(schema, prop)) {
-        return new RonkCollection(schema, prop as keyof S);
-      }
-      throw new Error(`Unknown collection: ${String(prop)}`);
-    },
-    apply(_, __, [collection]) {
-      return db.collection(collection);
-    }
-  });
+    });
+  }
 }
 
-export class RonkCollection<S extends SchemaLike, Col extends keyof S> {
-  constructor(public readonly schema: S, public readonly colName: Col) {}
-
-  bsonSchema() {
-    return this.schema[this.colName].bsonSchema();
-  }
+export function db<const S extends SchemaLike>(
+  schema: ValidateSchema<S> & S,
+  options: RonkOptions = {}
+) {
+  return new Ronk<S>(schema, options);
 }

@@ -1,35 +1,38 @@
-import { r } from "./index";
+import { ObjectId } from "mongodb";
+import { k } from ".";
 
 const schema = {
-  users: r.document({
-    _id: r.string(),
-    name: r.string().pattern(/^[a-z]+$/),
-    email: r.string(),
-    role: r.enum("admin", "user").default("user"),
-    createdAt: r.union(r.date(), r.number())
+  users: k.collection({
+    _id: k.objectId().default(() => new ObjectId()),
+    name: k.string().pattern(/^[a-z]+$/),
+    email: k.string(),
+    role: k.enum("admin", "user").default("user"),
+    createdAt: k.union(k.date(), k.number())
   }),
 
-  posts: r.document({
-    _id: r.string(),
-    title: r.string(),
-    content: r.string(),
-    createdAt: r.date(),
-    updatedAt: r.date(),
-    authorId: r.ref("users").delete("cascade")
+  posts: k.collection({
+    _id: k.objectId(),
+    title: k.string(),
+    content: k.string(),
+    createdAt: k.date(),
+    updatedAt: k.date(),
+    authorId: k.ref("users").delete("cascade")
   }),
 
-  comments: r.document({
-    _id: r.string(),
-    content: r.string(),
-    authorId: r.ref("users"),
-    postId: r.ref("posts"),
-    createdAt: r.date()
+  comments: k.collection({
+    _id: k.objectId(),
+    content: k.string(),
+    authorId: k.ref("users"),
+    postId: k.ref("posts"),
+    createdAt: k.date()
   })
 };
 
-export const db = r.db(schema, { uri: "mongodb://localhost:27017/testronk" });
+export const db = k.db(schema, { uri: "mongodb://localhost:27017/testronk" });
 
-export type User = r.type<typeof schema.users>;
-export type UserInput = r.input<typeof schema.users>;
+const { users } = db.collections;
 
-console.log(Bun.inspect(db.users.bsonSchema(), { depth: Infinity }));
+export type User = k.document<typeof users>;
+export type UserInput = k.documentInput<typeof users>;
+
+console.log(Bun.inspect(users.schema.bsonSchema(), { depth: Infinity }));
